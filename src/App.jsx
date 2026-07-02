@@ -11,6 +11,7 @@ import {
   LineChart,
   LogIn,
   LogOut,
+  MessageSquareText,
   Plus,
   ReceiptText,
   Search,
@@ -89,6 +90,15 @@ function parseBankSms(text) {
   };
 }
 
+function getSmsText(message) {
+  return typeof message === "string" ? message : message.body || "";
+}
+
+function isMoneySms(message) {
+  const text = getSmsText(message).toLowerCase();
+  return /(inr|rs\.?|₹|debited|credited|spent|paid|upi|card|account|a\/c|bank|txn|transaction)/i.test(text);
+}
+
 function App() {
   const [active, setActive] = useState("dashboard");
   const [user, setUser] = useState(null);
@@ -107,6 +117,8 @@ function App() {
   const [goalItems, setGoalItems] = useState(goals);
   const [query, setQuery] = useState("");
   const [sms, setSms] = useState("HDFC Bank: Rs. 642 debited from your account to Zomato via UPI on 02-Jul. Ref 883920.");
+  const [phoneSms, setPhoneSms] = useState([]);
+  const [smsBridgeStatus, setSmsBridgeStatus] = useState("");
   const [draft, setDraft] = useState({
     type: "expense",
     date: new Date().toISOString().slice(0, 10),
@@ -130,6 +142,28 @@ function App() {
       setAuthReady(true);
       setSyncStatus(account ? "Connecting to Firestore" : hasFirebaseConfig ? "Guest mode" : "Local only");
     });
+  }, []);
+
+  useEffect(() => {
+    function receiveMessages(event) {
+      const analyzed = event.detail
+        .filter(isMoneySms)
+        .map((message) => ({ ...message, parsed: parseBankSms(getSmsText(message)) }))
+        .filter((message) => message.parsed.amount > 0);
+      setPhoneSms(analyzed);
+      setSmsBridgeStatus(analyzed.length ? `Found ${analyzed.length} money SMS` : "No money SMS found");
+    }
+
+    function receiveError(event) {
+      setSmsBridgeStatus(event.detail?.message || "SMS permission failed");
+    }
+
+    window.addEventListener("moneyos:smsMessages", receiveMessages);
+    window.addEventListener("moneyos:smsError", receiveError);
+    return () => {
+      window.removeEventListener("moneyos:smsMessages", receiveMessages);
+      window.removeEventListener("moneyos:smsError", receiveError);
+    };
   }, []);
 
   useEffect(() => {
@@ -280,6 +314,15 @@ function App() {
     setUser(null);
   }
 
+  function requestPhoneSms() {
+    if (window.MoneyOsAndroid?.requestSmsInbox) {
+      setSmsBridgeStatus("Requesting SMS permission");
+      window.MoneyOsAndroid.requestSmsInbox();
+      return;
+    }
+    setSmsBridgeStatus("Open this tab inside the Android APK to read phone SMS");
+  }
+
   const parsedSms = parseBankSms(sms);
 
   return (
@@ -411,7 +454,16 @@ function App() {
           {active === "parser" && (
             <section className="panel">
               <PanelTitle title="SMS Expense Parser" action="Paste" />
-              <SmsParser sms={sms} setSms={setSms} parsed={parsedSms} onImport={() => addTransaction(parsedSms)} />
+              <SmsParser
+                sms={sms}
+                setSms={setSms}
+                parsed={parsedSms}
+                onImport={() => addTransaction(parsedSms)}
+                phoneSms={phoneSms}
+                smsBridgeStatus={smsBridgeStatus}
+                onRequestPhoneSms={requestPhoneSms}
+                onImportPhoneSms={(item) => addTransaction(item.parsed)}
+              />
             </section>
           )}
 
@@ -698,9 +750,32 @@ function SubscriptionList({ items }) {
   );
 }
 
-function SmsParser({ sms, setSms, parsed, onImport }) {
+function SmsParser({ sms, setSms, parsed, onImport, phoneSms, smsBridgeStatus, onRequestPhoneSms, onImportPhoneSms }) {
   return (
     <div className="form-stack">
+      <div className="native-sms-card">
+        <div>
+          <MessageSquareText size={20} />
+          <div>
+            <strong>Analyze phone SMS</strong>
+            <span>{smsBridgeStatus || "Available inside the Android APK only"}</span>
+          </div>
+        </div>
+        <button className="secondary" onClick={onRequestPhoneSms}>Read phone SMS</button>
+      </div>
+      {phoneSms.length > 0 && (
+        <div className="sms-results">
+          {phoneSms.slice(0, 12).map((message, index) => (
+            <div className="sms-result" key={`${message.date}-${index}`}>
+              <div>
+                <strong>{message.parsed.merchant}</strong>
+                <span>{message.address || "SMS"} · {formatInr(message.parsed.amount)}</span>
+              </div>
+              <button className="secondary" onClick={() => onImportPhoneSms(message)}>Import</button>
+            </div>
+          ))}
+        </div>
+      )}
       <textarea value={sms} onChange={(e) => setSms(e.target.value)} rows={5} />
       <div className="parsed">
         <span>{parsed.type}</span>
