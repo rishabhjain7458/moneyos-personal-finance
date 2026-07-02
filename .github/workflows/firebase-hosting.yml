@@ -25,12 +25,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_API_KEY: AIzaSyDcbXrv8DNjEU15H7o6lWwJtMSGTkvfTxU
+          VITE_FIREBASE_AUTH_DOMAIN: moneyos-550b3.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: moneyos-550b3
+          VITE_FIREBASE_STORAGE_BUCKET: moneyos-550b3.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "120039087701"
+          VITE_FIREBASE_APP_ID: 1:120039087701:web:db0fb20907b5e51e6cfedc
 
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
