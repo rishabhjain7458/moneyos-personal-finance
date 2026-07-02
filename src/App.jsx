@@ -16,17 +16,23 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Target,
+  Trash2,
   WalletCards,
 } from "lucide-react";
 import {
+  budgets,
   calendarEvents,
   creditCards,
+  goals,
   netWorthItems,
   netWorthTrend,
   seedTransactions,
   subscriptions,
 } from "./data/financeData";
 import {
+  clearUserCollection,
+  deleteUserDocument,
   hasFirebaseConfig,
   saveTransaction,
   saveUserDocument,
@@ -97,6 +103,8 @@ function App() {
   const [cardItems, setCardItems] = useState(creditCards);
   const [worthItems, setWorthItems] = useState(netWorthItems);
   const [worthTrend, setWorthTrend] = useState(netWorthTrend);
+  const [budgetItems, setBudgetItems] = useState(budgets);
+  const [goalItems, setGoalItems] = useState(goals);
   const [query, setQuery] = useState("");
   const [sms, setSms] = useState("HDFC Bank: Rs. 642 debited from your account to Zomato via UPI on 02-Jul. Ref 883920.");
   const [draft, setDraft] = useState({
@@ -113,6 +121,8 @@ function App() {
   const [eventDraft, setEventDraft] = useState({ title: "", amount: "", date: new Date().toISOString().slice(0, 10), kind: "Bill" });
   const [cardDraft, setCardDraft] = useState({ name: "", due: new Date().toISOString().slice(0, 10), limit: "", outstanding: "", rewards: "Food, Shopping", bestFor: "" });
   const [worthDraft, setWorthDraft] = useState({ name: "", type: "asset", amount: "" });
+  const [budgetDraft, setBudgetDraft] = useState({ category: "Food", limit: "" });
+  const [goalDraft, setGoalDraft] = useState({ name: "", target: "", current: "", deadline: new Date().toISOString().slice(0, 10) });
 
   useEffect(() => {
     return watchAuth((account) => {
@@ -148,6 +158,8 @@ function App() {
       setCardItems(creditCards);
       setWorthItems(netWorthItems);
       setWorthTrend(netWorthTrend);
+      setBudgetItems(budgets);
+      setGoalItems(goals);
       return undefined;
     }
 
@@ -166,6 +178,12 @@ function App() {
     const trendUnsub = watchUserCollection(user.uid, "netWorthTrend", (snapshot) => {
       setWorthTrend(snapshot.docs.map((item) => item.data()).sort((a, b) => a.order - b.order));
     }, () => setSyncStatus("Trend sync failed"));
+    const budgetUnsub = watchUserCollection(user.uid, "budgets", (snapshot) => {
+      setBudgetItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.category.localeCompare(b.category)));
+    }, () => setSyncStatus("Budget sync failed"));
+    const goalUnsub = watchUserCollection(user.uid, "goals", (snapshot) => {
+      setGoalItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.deadline.localeCompare(b.deadline)));
+    }, () => setSyncStatus("Goal sync failed"));
 
     return () => {
       subscriptionsUnsub();
@@ -173,6 +191,8 @@ function App() {
       cardsUnsub();
       worthUnsub();
       trendUnsub();
+      budgetUnsub();
+      goalUnsub();
     };
   }, [user]);
 
@@ -190,8 +210,11 @@ function App() {
       .reduce((acc, item) => ({ ...acc, [item.category]: (acc[item.category] || 0) + item.amount }), {});
     const assets = worthItems.filter((i) => i.type === "asset").reduce((sum, item) => sum + item.amount, 0);
     const debt = worthItems.filter((i) => i.type === "debt").reduce((sum, item) => sum + item.amount, 0);
-    return { income, expense, saved: income - expense, categoryTotals, netWorth: assets - debt, debt };
-  }, [transactions, worthItems]);
+    const upcoming = [...calendarItems, ...subscriptionItems.map((item) => ({ amount: item.cost, date: item.renews }))]
+      .filter((item) => item.date >= new Date().toISOString().slice(0, 10))
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    return { income, expense, saved: income - expense, categoryTotals, netWorth: assets - debt, debt, upcoming };
+  }, [calendarItems, subscriptionItems, transactions, worthItems]);
 
   const bestCard = useMemo(() => {
     return cardItems.find((card) => card.rewards.includes(spendCategory)) || cardItems[0];
@@ -219,6 +242,28 @@ function App() {
     await saveUserDocument(user.uid, collectionName, next);
     setSyncStatus("Synced with Firestore");
     reset();
+  }
+
+  async function deleteItem(collectionName, id) {
+    if (!user) {
+      setSyncStatus("Sign in to delete cloud data");
+      return;
+    }
+    setSyncStatus(`Deleting from ${collectionName}`);
+    await deleteUserDocument(user.uid, collectionName, id);
+    setSyncStatus("Synced with Firestore");
+  }
+
+  async function clearTransactions() {
+    if (!user) {
+      setSyncStatus("Sign in to clear Firestore data");
+      return;
+    }
+    const ok = window.confirm("Clear all Firestore transactions for this account?");
+    if (!ok) return;
+    setSyncStatus("Clearing transactions");
+    await clearUserCollection(user.uid, "transactions");
+    setSyncStatus("Cloud transactions cleared");
   }
 
   async function handleLogin() {
@@ -296,7 +341,7 @@ function App() {
           {(active === "dashboard" || active === "transactions") && (
             <>
               <section className="panel wide">
-                <PanelTitle title="Spending Mirror" action={`${filtered.length} entries`} />
+                <PanelTitle title="Spending Mirror" action={<PanelActions label={`${filtered.length} entries`} danger={user && filtered.length > 0 ? "Clear all" : ""} onDanger={clearTransactions} />} />
                 <CategoryBars totals={metrics.categoryTotals} />
               </section>
               <section className="panel">
@@ -305,7 +350,21 @@ function App() {
               </section>
               <section className="panel wide">
                 <PanelTitle title="Recent Activity" action={formatInr(metrics.expense)} />
-                <TransactionsTable items={filtered} />
+                <TransactionsTable items={filtered} onDelete={(id) => deleteItem("transactions", id)} canDelete={Boolean(user)} />
+              </section>
+              <section className="panel">
+                <PanelTitle title="Budget Health" action="Limits" />
+                <BudgetPanel budgets={budgetItems} totals={metrics.categoryTotals} onDelete={(id) => deleteItem("budgets", id)} canDelete={Boolean(user)} />
+                <BudgetForm
+                  draft={budgetDraft}
+                  setDraft={setBudgetDraft}
+                  onAdd={() => addCloudItem("budgets", { ...budgetDraft, limit: Number(budgetDraft.limit) }, () => setBudgetDraft({ category: "Food", limit: "" }))}
+                  disabled={!user}
+                />
+              </section>
+              <section className="panel">
+                <PanelTitle title="Smart Insights" action="Live" />
+                <InsightPanel metrics={metrics} budgets={budgetItems} goals={goalItems} />
               </section>
             </>
           )}
@@ -368,6 +427,18 @@ function App() {
               />
             </section>
           )}
+          {(active === "dashboard" || active === "networth") && (
+            <section className="panel">
+              <PanelTitle title="Goals" action={<Target size={17} />} />
+              <GoalPanel goals={goalItems} onDelete={(id) => deleteItem("goals", id)} canDelete={Boolean(user)} />
+              <GoalForm
+                draft={goalDraft}
+                setDraft={setGoalDraft}
+                onAdd={() => addCloudItem("goals", { ...goalDraft, target: Number(goalDraft.target), current: Number(goalDraft.current) }, () => setGoalDraft({ name: "", target: "", current: "", deadline: new Date().toISOString().slice(0, 10) }))}
+                disabled={!user}
+              />
+            </section>
+          )}
         </div>
       </main>
     </div>
@@ -416,9 +487,21 @@ function PanelTitle({ title, action }) {
   );
 }
 
+function PanelActions({ label, danger, onDanger }) {
+  return (
+    <div className="panel-actions">
+      <span>{label}</span>
+      {danger && <button className="text-danger" onClick={onDanger}>{danger}</button>}
+    </div>
+  );
+}
+
 function CategoryBars({ totals }) {
   const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
   const max = Math.max(...rows.map(([, value]) => value), 1);
+  if (rows.length === 0) {
+    return <EmptyState title="No spending yet" detail="Add a transaction to see category patterns." />;
+  }
   return (
     <div className="bars">
       {rows.map(([label, value]) => (
@@ -452,7 +535,7 @@ function TransactionForm({ draft, setDraft, onAdd }) {
   );
 }
 
-function TransactionsTable({ items }) {
+function TransactionsTable({ items, onDelete, canDelete }) {
   if (items.length === 0) {
     return (
       <div className="empty-state">
@@ -467,9 +550,88 @@ function TransactionsTable({ items }) {
       {items.slice(0, 10).map((item) => (
         <div className="table-row" key={item.id}>
           <div><strong>{item.merchant}</strong><span>{formatDate(item.date)} · {item.category} · {item.method}</span></div>
-          <b className={item.type}>{item.type === "income" ? "+" : "-"}{formatInr(item.amount)}</b>
+          <div className="row-actions">
+            <b className={item.type}>{item.type === "income" ? "+" : "-"}{formatInr(item.amount)}</b>
+            {canDelete && <button className="icon-danger" onClick={() => onDelete(item.id)} title="Delete transaction"><Trash2 size={14} /></button>}
+          </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function BudgetPanel({ budgets: budgetRows, totals, onDelete, canDelete }) {
+  if (budgetRows.length === 0) {
+    return <EmptyState title="No budgets yet" detail="Set category limits to track overspending." />;
+  }
+
+  return (
+    <div className="bars">
+      {budgetRows.map((budget) => {
+        const spent = totals[budget.category] || 0;
+        const progress = budget.limit ? Math.min(100, (spent / budget.limit) * 100) : 0;
+        const over = spent > budget.limit;
+        return (
+          <div className="bar-row" key={budget.id}>
+            <div>
+              <strong>{budget.category}</strong>
+              <span>{formatInr(spent)} / {formatInr(budget.limit)}</span>
+            </div>
+            <div className={`track ${over ? "over" : ""}`}><i style={{ width: `${Math.max(4, progress)}%` }} /></div>
+            <div className="budget-footer">
+              <span>{over ? `${formatInr(spent - budget.limit)} over` : `${formatInr(budget.limit - spent)} left`}</span>
+              {canDelete && <button className="icon-danger" onClick={() => onDelete(budget.id)} title="Delete budget"><Trash2 size={14} /></button>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InsightPanel({ metrics, budgets: budgetRows, goals: goalRows }) {
+  const overBudget = budgetRows.filter((budget) => (metrics.categoryTotals[budget.category] || 0) > budget.limit);
+  const savingRate = metrics.income ? Math.round((metrics.saved / metrics.income) * 100) : 0;
+  const topCategory = Object.entries(metrics.categoryTotals).sort((a, b) => b[1] - a[1])[0];
+  const nextGoal = goalRows.find((goal) => goal.target > goal.current);
+  const insights = [
+    topCategory ? `Top spend is ${topCategory[0]} at ${formatInr(topCategory[1])}.` : "No spending pattern yet.",
+    metrics.income ? `Saving rate is ${savingRate}%.` : "Add income to calculate saving rate.",
+    overBudget.length ? `${overBudget.length} budget ${overBudget.length === 1 ? "is" : "are"} over limit.` : "Budgets are currently inside limits.",
+    nextGoal ? `${formatInr(nextGoal.target - nextGoal.current)} left for ${nextGoal.name}.` : "No active goal shortfall.",
+    metrics.upcoming ? `${formatInr(metrics.upcoming)} upcoming from calendar and subscriptions.` : "No upcoming commitments recorded.",
+  ];
+
+  return (
+    <div className="insights">
+      {insights.map((item) => <div className="insight" key={item}>{item}</div>)}
+    </div>
+  );
+}
+
+function GoalPanel({ goals: goalRows, onDelete, canDelete }) {
+  if (goalRows.length === 0) {
+    return <EmptyState title="No goals yet" detail="Create targets for emergency fund, gadgets, travel, or investments." />;
+  }
+
+  return (
+    <div className="bars">
+      {goalRows.map((goal) => {
+        const progress = goal.target ? Math.min(100, (goal.current / goal.target) * 100) : 0;
+        return (
+          <div className="bar-row" key={goal.id}>
+            <div>
+              <strong>{goal.name}</strong>
+              <span>{formatInr(goal.current)} / {formatInr(goal.target)}</span>
+            </div>
+            <div className="track goal"><i style={{ width: `${Math.max(4, progress)}%` }} /></div>
+            <div className="budget-footer">
+              <span>Due {formatDate(goal.deadline)}</span>
+              {canDelete && <button className="icon-danger" onClick={() => onDelete(goal.id)} title="Delete goal"><Trash2 size={14} /></button>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -653,6 +815,36 @@ function WorthForm({ draft, setDraft, onAdd, disabled }) {
         <input value={draft.amount} onChange={(e) => update("amount", e.target.value)} inputMode="numeric" placeholder="Amount" />
       </div>
       <button className="primary" disabled={disabled || !draft.name || !Number(draft.amount)} onClick={onAdd}>Save net worth item</button>
+    </div>
+  );
+}
+
+function BudgetForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <div className="two">
+        <select value={draft.category} onChange={(e) => update("category", e.target.value)}>
+          {categories.filter((item) => item !== "Salary").map((item) => <option key={item}>{item}</option>)}
+        </select>
+        <input value={draft.limit} onChange={(e) => update("limit", e.target.value)} inputMode="numeric" placeholder="Monthly limit" />
+      </div>
+      <button className="primary" disabled={disabled || !Number(draft.limit)} onClick={onAdd}>Save budget</button>
+    </div>
+  );
+}
+
+function GoalForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <input value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="Goal name" />
+      <div className="two">
+        <input value={draft.target} onChange={(e) => update("target", e.target.value)} inputMode="numeric" placeholder="Target" />
+        <input value={draft.current} onChange={(e) => update("current", e.target.value)} inputMode="numeric" placeholder="Current" />
+      </div>
+      <input type="date" value={draft.deadline} onChange={(e) => update("deadline", e.target.value)} />
+      <button className="primary" disabled={disabled || !draft.name || !Number(draft.target)} onClick={onAdd}>Save goal</button>
     </div>
   );
 }

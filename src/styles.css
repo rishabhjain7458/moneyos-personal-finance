@@ -320,6 +320,36 @@ h2 {
   font-weight: 700;
 }
 
+.panel-actions,
+.row-actions,
+.budget-footer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.text-danger,
+.icon-danger {
+  border: 0;
+  background: transparent;
+  color: #c24132;
+  font-weight: 800;
+  padding: 0;
+}
+
+.icon-danger {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+}
+
+.icon-danger:hover {
+  background: #fee2e2;
+}
+
 .bars,
 .form-stack,
 .mini-form,
@@ -394,6 +424,37 @@ h2 {
   height: 100%;
   background: linear-gradient(90deg, #14b8a6, #d9a441);
   border-radius: 999px;
+}
+
+.track.over i {
+  background: linear-gradient(90deg, #f59e0b, #dc2626);
+}
+
+.track.goal i {
+  background: linear-gradient(90deg, #14b8a6, #2563eb);
+}
+
+.budget-footer {
+  color: #66716d;
+  font-size: 12px;
+}
+
+.insights {
+  display: grid;
+  gap: 8px;
+}
+
+.insight {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  background: #f5f7f6;
+  border: 1px solid #edf0ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #33413c;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .segmented,

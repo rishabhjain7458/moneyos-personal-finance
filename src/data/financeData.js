@@ -50,3 +50,15 @@ export const netWorthTrend = [
   { label: "Jun", value: 527000 },
   { label: "Jul", value: 570351 },
 ];
+
+export const budgets = [
+  { id: "food", category: "Food", limit: 9000 },
+  { id: "transport", category: "Transport", limit: 4500 },
+  { id: "shopping", category: "Shopping", limit: 8000 },
+  { id: "bills", category: "Bills", limit: 6000 },
+];
+
+export const goals = [
+  { id: "emergency", name: "Emergency fund", target: 300000, current: 100000, deadline: "2026-12-31" },
+  { id: "phone", name: "Next phone upgrade", target: 85000, current: 18000, deadline: "2026-10-15" },
+];

@@ -8,10 +8,13 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  deleteDoc,
   doc,
   getFirestore,
+  getDocs,
   onSnapshot,
   setDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -68,4 +71,17 @@ export function watchUserCollection(uid, collectionName, callback, onError) {
 export function saveUserDocument(uid, collectionName, item) {
   if (!db || !uid) return Promise.resolve();
   return setDoc(doc(db, "users", uid, collectionName, String(item.id)), item);
+}
+
+export function deleteUserDocument(uid, collectionName, id) {
+  if (!db || !uid) return Promise.resolve();
+  return deleteDoc(doc(db, "users", uid, collectionName, String(id)));
+}
+
+export async function clearUserCollection(uid, collectionName) {
+  if (!db || !uid) return;
+  const snapshot = await getDocs(collection(db, "users", uid, collectionName));
+  const batch = writeBatch(db);
+  snapshot.docs.forEach((item) => batch.delete(item.ref));
+  await batch.commit();
 }
