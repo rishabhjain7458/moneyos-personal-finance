@@ -29,7 +29,6 @@ import {
 import {
   hasFirebaseConfig,
   saveTransaction,
-  seedCloudTransactions,
   signInWithGoogle,
   signOutUser,
   watchAuth,
@@ -87,7 +86,6 @@ function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasFirebaseConfig ? "Connect Google to sync" : "Firebase config missing");
-  const [cloudSeeded, setCloudSeeded] = useState(false);
   const [transactions, setTransactions] = useState(() => {
     const saved = localStorage.getItem("moneyos-transactions");
     return saved ? JSON.parse(saved) : seedTransactions;
@@ -121,19 +119,12 @@ function App() {
 
   useEffect(() => {
     if (!user) return undefined;
-    setCloudSeeded(false);
     return watchTransactions(
       user.uid,
-      async (snapshot) => {
+      (snapshot) => {
         const cloudTransactions = snapshot.docs.map((item) => item.data());
-        if (cloudTransactions.length === 0 && !cloudSeeded) {
-          setCloudSeeded(true);
-          await seedCloudTransactions(user.uid, transactions);
-          setSyncStatus("Seeded cloud database");
-          return;
-        }
         setTransactions(cloudTransactions);
-        setSyncStatus("Synced with Firestore");
+        setSyncStatus(cloudTransactions.length ? "Synced with Firestore" : "Cloud database empty");
       },
       () => setSyncStatus("Sync needs Firebase rules"),
     );
@@ -380,6 +371,15 @@ function TransactionForm({ draft, setDraft, onAdd }) {
 }
 
 function TransactionsTable({ items }) {
+  if (items.length === 0) {
+    return (
+      <div className="empty-state">
+        <strong>No transactions yet</strong>
+        <span>Add your first entry or import a bank SMS to create Firestore records.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="table">
       {items.slice(0, 10).map((item) => (

@@ -327,6 +327,19 @@ h2 {
   gap: 10px;
 }
 
+.empty-state {
+  min-height: 120px;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+  color: #66716d;
+}
+
+.empty-state strong {
+  color: #101312;
+}
+
 .bar-row {
   display: grid;
   gap: 8px;

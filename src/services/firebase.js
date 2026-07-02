@@ -12,7 +12,6 @@ import {
   getFirestore,
   onSnapshot,
   setDoc,
-  writeBatch,
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -59,13 +58,4 @@ export function watchTransactions(uid, callback, onError) {
 export function saveTransaction(uid, transaction) {
   if (!db || !uid) return Promise.resolve();
   return setDoc(doc(db, "users", uid, "transactions", String(transaction.id)), transaction);
-}
-
-export function seedCloudTransactions(uid, transactions) {
-  if (!db || !uid) return Promise.resolve();
-  const batch = writeBatch(db);
-  transactions.forEach((transaction) => {
-    batch.set(doc(db, "users", uid, "transactions", String(transaction.id)), transaction);
-  });
-  return batch.commit();
 }
