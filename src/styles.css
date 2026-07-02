@@ -204,7 +204,9 @@ h2 {
 .search input,
 .form-stack input,
 .form-stack select,
-.form-stack textarea {
+.form-stack textarea,
+.mini-form input,
+.mini-form select {
   width: 100%;
   border: 1px solid #dfe5e2;
   border-radius: 8px;
@@ -320,11 +322,18 @@ h2 {
 
 .bars,
 .form-stack,
+.mini-form,
 .list,
 .table,
 .card-stack {
   display: grid;
   gap: 10px;
+}
+
+.mini-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0ee;
 }
 
 .empty-state {

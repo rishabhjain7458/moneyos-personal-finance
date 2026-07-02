@@ -29,10 +29,12 @@ import {
 import {
   hasFirebaseConfig,
   saveTransaction,
+  saveUserDocument,
   signInWithGoogle,
   signOutUser,
   watchAuth,
   watchTransactions,
+  watchUserCollection,
 } from "./services/firebase";
 
 const navItems = [
@@ -90,6 +92,11 @@ function App() {
     const saved = localStorage.getItem("moneyos-transactions");
     return saved ? JSON.parse(saved) : seedTransactions;
   });
+  const [subscriptionItems, setSubscriptionItems] = useState(subscriptions);
+  const [calendarItems, setCalendarItems] = useState(calendarEvents);
+  const [cardItems, setCardItems] = useState(creditCards);
+  const [worthItems, setWorthItems] = useState(netWorthItems);
+  const [worthTrend, setWorthTrend] = useState(netWorthTrend);
   const [query, setQuery] = useState("");
   const [sms, setSms] = useState("HDFC Bank: Rs. 642 debited from your account to Zomato via UPI on 02-Jul. Ref 883920.");
   const [draft, setDraft] = useState({
@@ -102,6 +109,10 @@ function App() {
     note: "",
   });
   const [spendCategory, setSpendCategory] = useState("Food");
+  const [subscriptionDraft, setSubscriptionDraft] = useState({ name: "", cost: "", cycle: "Monthly", renews: new Date().toISOString().slice(0, 10), category: "Entertainment" });
+  const [eventDraft, setEventDraft] = useState({ title: "", amount: "", date: new Date().toISOString().slice(0, 10), kind: "Bill" });
+  const [cardDraft, setCardDraft] = useState({ name: "", due: new Date().toISOString().slice(0, 10), limit: "", outstanding: "", rewards: "Food, Shopping", bestFor: "" });
+  const [worthDraft, setWorthDraft] = useState({ name: "", type: "asset", amount: "" });
 
   useEffect(() => {
     return watchAuth((account) => {
@@ -130,6 +141,41 @@ function App() {
     );
   }, [user]);
 
+  useEffect(() => {
+    if (!user) {
+      setSubscriptionItems(subscriptions);
+      setCalendarItems(calendarEvents);
+      setCardItems(creditCards);
+      setWorthItems(netWorthItems);
+      setWorthTrend(netWorthTrend);
+      return undefined;
+    }
+
+    const subscriptionsUnsub = watchUserCollection(user.uid, "subscriptions", (snapshot) => {
+      setSubscriptionItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.renews.localeCompare(b.renews)));
+    }, () => setSyncStatus("Subscription sync failed"));
+    const calendarUnsub = watchUserCollection(user.uid, "calendarEvents", (snapshot) => {
+      setCalendarItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.date.localeCompare(b.date)));
+    }, () => setSyncStatus("Calendar sync failed"));
+    const cardsUnsub = watchUserCollection(user.uid, "creditCards", (snapshot) => {
+      setCardItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.name.localeCompare(b.name)));
+    }, () => setSyncStatus("Card sync failed"));
+    const worthUnsub = watchUserCollection(user.uid, "netWorthItems", (snapshot) => {
+      setWorthItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.name.localeCompare(b.name)));
+    }, () => setSyncStatus("Net worth sync failed"));
+    const trendUnsub = watchUserCollection(user.uid, "netWorthTrend", (snapshot) => {
+      setWorthTrend(snapshot.docs.map((item) => item.data()).sort((a, b) => a.order - b.order));
+    }, () => setSyncStatus("Trend sync failed"));
+
+    return () => {
+      subscriptionsUnsub();
+      calendarUnsub();
+      cardsUnsub();
+      worthUnsub();
+      trendUnsub();
+    };
+  }, [user]);
+
   const filtered = useMemo(() => {
     return transactions
       .filter((item) => `${item.merchant} ${item.category} ${item.method}`.toLowerCase().includes(query.toLowerCase()))
@@ -142,14 +188,14 @@ function App() {
     const categoryTotals = transactions
       .filter((t) => t.type === "expense")
       .reduce((acc, item) => ({ ...acc, [item.category]: (acc[item.category] || 0) + item.amount }), {});
-    const assets = netWorthItems.filter((i) => i.type === "asset").reduce((sum, item) => sum + item.amount, 0);
-    const debt = netWorthItems.filter((i) => i.type === "debt").reduce((sum, item) => sum + item.amount, 0);
+    const assets = worthItems.filter((i) => i.type === "asset").reduce((sum, item) => sum + item.amount, 0);
+    const debt = worthItems.filter((i) => i.type === "debt").reduce((sum, item) => sum + item.amount, 0);
     return { income, expense, saved: income - expense, categoryTotals, netWorth: assets - debt, debt };
-  }, [transactions]);
+  }, [transactions, worthItems]);
 
   const bestCard = useMemo(() => {
-    return creditCards.find((card) => card.rewards.includes(spendCategory)) || creditCards[0];
-  }, [spendCategory]);
+    return cardItems.find((card) => card.rewards.includes(spendCategory)) || cardItems[0];
+  }, [cardItems, spendCategory]);
 
   async function addTransaction(item) {
     if (!Number(item.amount)) return;
@@ -161,6 +207,18 @@ function App() {
       setSyncStatus("Synced with Firestore");
     }
     setDraft({ ...draft, merchant: "", amount: "", note: "" });
+  }
+
+  async function addCloudItem(collectionName, item, reset) {
+    if (!user) {
+      setSyncStatus("Sign in to save this section");
+      return;
+    }
+    const next = { ...item, id: Date.now() };
+    setSyncStatus(`Saving ${collectionName}`);
+    await saveUserDocument(user.uid, collectionName, next);
+    setSyncStatus("Synced with Firestore");
+    reset();
   }
 
   async function handleLogin() {
@@ -255,7 +313,13 @@ function App() {
           {(active === "dashboard" || active === "calendar") && (
             <section className="panel">
               <PanelTitle title="Money Calendar" action="Upcoming" />
-              <EventList />
+              <EventList events={calendarItems} />
+              <CalendarForm
+                draft={eventDraft}
+                setDraft={setEventDraft}
+                onAdd={() => addCloudItem("calendarEvents", { ...eventDraft, amount: Number(eventDraft.amount) }, () => setEventDraft({ title: "", amount: "", date: new Date().toISOString().slice(0, 10), kind: "Bill" }))}
+                disabled={!user}
+              />
             </section>
           )}
 
@@ -268,22 +332,40 @@ function App() {
 
           {(active === "dashboard" || active === "cards") && (
             <section className="panel wide">
-              <PanelTitle title="Credit Card Optimizer" action={bestCard.name} />
-              <CardOptimizer spendCategory={spendCategory} setSpendCategory={setSpendCategory} bestCard={bestCard} />
+              <PanelTitle title="Credit Card Optimizer" action={bestCard?.name || "No cards"} />
+              <CardOptimizer spendCategory={spendCategory} setSpendCategory={setSpendCategory} bestCard={bestCard} cards={cardItems} />
+              <CardForm
+                draft={cardDraft}
+                setDraft={setCardDraft}
+                onAdd={() => addCloudItem("creditCards", { ...cardDraft, limit: Number(cardDraft.limit), outstanding: Number(cardDraft.outstanding), rewards: cardDraft.rewards.split(",").map((item) => item.trim()).filter(Boolean) }, () => setCardDraft({ name: "", due: new Date().toISOString().slice(0, 10), limit: "", outstanding: "", rewards: "Food, Shopping", bestFor: "" }))}
+                disabled={!user}
+              />
             </section>
           )}
 
           {(active === "dashboard" || active === "networth") && (
             <section className="panel wide">
               <PanelTitle title="Personal Net Worth" action={formatInr(metrics.netWorth)} />
-              <NetWorth />
+              <NetWorth items={worthItems} trend={worthTrend} />
+              <WorthForm
+                draft={worthDraft}
+                setDraft={setWorthDraft}
+                onAdd={() => addCloudItem("netWorthItems", { ...worthDraft, amount: Number(worthDraft.amount) }, () => setWorthDraft({ name: "", type: "asset", amount: "" }))}
+                disabled={!user}
+              />
             </section>
           )}
 
           {(active === "dashboard" || active === "calendar") && (
             <section className="panel">
-              <PanelTitle title="Subscriptions" action={formatInr(subscriptions.reduce((s, i) => s + i.cost, 0))} />
-              <SubscriptionList />
+              <PanelTitle title="Subscriptions" action={formatInr(subscriptionItems.reduce((s, i) => s + i.cost, 0))} />
+              <SubscriptionList items={subscriptionItems} />
+              <SubscriptionForm
+                draft={subscriptionDraft}
+                setDraft={setSubscriptionDraft}
+                onAdd={() => addCloudItem("subscriptions", { ...subscriptionDraft, cost: Number(subscriptionDraft.cost) }, () => setSubscriptionDraft({ name: "", cost: "", cycle: "Monthly", renews: new Date().toISOString().slice(0, 10), category: "Entertainment" }))}
+                disabled={!user}
+              />
             </section>
           )}
         </div>
@@ -392,10 +474,14 @@ function TransactionsTable({ items }) {
   );
 }
 
-function EventList() {
+function EventList({ events }) {
+  if (events.length === 0) {
+    return <EmptyState title="No calendar events" detail="Add dues, renewals, or money reminders to Firestore." />;
+  }
+
   return (
     <div className="list">
-      {calendarEvents.map((event) => (
+      {events.map((event) => (
         <div className="list-item" key={`${event.date}-${event.title}`}>
           <time>{formatDate(event.date)}</time>
           <div><strong>{event.title}</strong><span>{event.kind}</span></div>
@@ -406,10 +492,14 @@ function EventList() {
   );
 }
 
-function SubscriptionList() {
+function SubscriptionList({ items }) {
+  if (items.length === 0) {
+    return <EmptyState title="No subscriptions" detail="Add recurring payments to track renewals." />;
+  }
+
   return (
     <div className="list">
-      {subscriptions.map((item) => (
+      {items.map((item) => (
         <div className="list-item" key={item.name}>
           <time>{formatDate(item.renews)}</time>
           <div><strong>{item.name}</strong><span>{item.cycle} · {item.category}</span></div>
@@ -434,7 +524,11 @@ function SmsParser({ sms, setSms, parsed, onImport }) {
   );
 }
 
-function CardOptimizer({ spendCategory, setSpendCategory, bestCard }) {
+function CardOptimizer({ spendCategory, setSpendCategory, bestCard, cards }) {
+  if (cards.length === 0) {
+    return <EmptyState title="No credit cards" detail="Add your cards to get optimizer recommendations." />;
+  }
+
   return (
     <div className="cards-layout">
       <div className="form-stack">
@@ -448,7 +542,7 @@ function CardOptimizer({ spendCategory, setSpendCategory, bestCard }) {
         </div>
       </div>
       <div className="card-stack">
-        {creditCards.map((card) => (
+        {cards.map((card) => (
           <article className="credit-card" key={card.name}>
             <strong>{card.name}</strong>
             <span>Outstanding {formatInr(card.outstanding)}</span>
@@ -460,12 +554,16 @@ function CardOptimizer({ spendCategory, setSpendCategory, bestCard }) {
   );
 }
 
-function NetWorth() {
-  const max = Math.max(...netWorthTrend.map((i) => i.value));
+function NetWorth({ items, trend }) {
+  if (items.length === 0 && trend.length === 0) {
+    return <EmptyState title="No net worth records" detail="Add assets and debts to calculate your current net worth." />;
+  }
+
+  const max = Math.max(...trend.map((i) => i.value), 1);
   return (
     <div className="networth">
       <div className="spark-chart">
-        {netWorthTrend.map((item) => (
+        {trend.length === 0 ? <EmptyState title="No trend yet" detail="Trend points can be added from Firestore." /> : trend.map((item) => (
           <div key={item.label}>
             <i style={{ height: `${(item.value / max) * 100}%` }} />
             <span>{item.label}</span>
@@ -473,13 +571,88 @@ function NetWorth() {
         ))}
       </div>
       <div className="list compact">
-        {netWorthItems.map((item) => (
+        {items.map((item) => (
           <div className="list-item" key={item.name}>
             <div><strong>{item.name}</strong><span>{item.type}</span></div>
             <b>{formatInr(item.amount)}</b>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, detail }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+    </div>
+  );
+}
+
+function SubscriptionForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <input value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="Subscription name" />
+      <input value={draft.cost} onChange={(e) => update("cost", e.target.value)} inputMode="numeric" placeholder="Cost" />
+      <div className="two">
+        <input type="date" value={draft.renews} onChange={(e) => update("renews", e.target.value)} />
+        <input value={draft.category} onChange={(e) => update("category", e.target.value)} placeholder="Category" />
+      </div>
+      <button className="primary" disabled={disabled || !draft.name || !Number(draft.cost)} onClick={onAdd}>Save subscription</button>
+    </div>
+  );
+}
+
+function CalendarForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <input value={draft.title} onChange={(e) => update("title", e.target.value)} placeholder="Event title" />
+      <div className="two">
+        <input value={draft.amount} onChange={(e) => update("amount", e.target.value)} inputMode="numeric" placeholder="Amount" />
+        <input value={draft.kind} onChange={(e) => update("kind", e.target.value)} placeholder="Kind" />
+      </div>
+      <input type="date" value={draft.date} onChange={(e) => update("date", e.target.value)} />
+      <button className="primary" disabled={disabled || !draft.title || !Number(draft.amount)} onClick={onAdd}>Save event</button>
+    </div>
+  );
+}
+
+function CardForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <input value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="Card name" />
+      <div className="two">
+        <input value={draft.limit} onChange={(e) => update("limit", e.target.value)} inputMode="numeric" placeholder="Limit" />
+        <input value={draft.outstanding} onChange={(e) => update("outstanding", e.target.value)} inputMode="numeric" placeholder="Outstanding" />
+      </div>
+      <input value={draft.rewards} onChange={(e) => update("rewards", e.target.value)} placeholder="Rewards: Food, Shopping" />
+      <div className="two">
+        <input type="date" value={draft.due} onChange={(e) => update("due", e.target.value)} />
+        <input value={draft.bestFor} onChange={(e) => update("bestFor", e.target.value)} placeholder="Best for" />
+      </div>
+      <button className="primary" disabled={disabled || !draft.name || !Number(draft.limit)} onClick={onAdd}>Save card</button>
+    </div>
+  );
+}
+
+function WorthForm({ draft, setDraft, onAdd, disabled }) {
+  const update = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
+  return (
+    <div className="mini-form">
+      <input value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="Asset or debt name" />
+      <div className="two">
+        <select value={draft.type} onChange={(e) => update("type", e.target.value)}>
+          <option value="asset">Asset</option>
+          <option value="debt">Debt</option>
+        </select>
+        <input value={draft.amount} onChange={(e) => update("amount", e.target.value)} inputMode="numeric" placeholder="Amount" />
+      </div>
+      <button className="primary" disabled={disabled || !draft.name || !Number(draft.amount)} onClick={onAdd}>Save net worth item</button>
     </div>
   );
 }

@@ -59,3 +59,13 @@ export function saveTransaction(uid, transaction) {
   if (!db || !uid) return Promise.resolve();
   return setDoc(doc(db, "users", uid, "transactions", String(transaction.id)), transaction);
 }
+
+export function watchUserCollection(uid, collectionName, callback, onError) {
+  if (!db || !uid) return () => {};
+  return onSnapshot(collection(db, "users", uid, collectionName), callback, onError);
+}
+
+export function saveUserDocument(uid, collectionName, item) {
+  if (!db || !uid) return Promise.resolve();
+  return setDoc(doc(db, "users", uid, collectionName, String(item.id)), item);
+}
