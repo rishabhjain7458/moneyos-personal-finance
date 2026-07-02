@@ -143,7 +143,7 @@ function App() {
     return watchTransactions(
       user.uid,
       (snapshot) => {
-        const cloudTransactions = snapshot.docs.map((item) => item.data());
+        const cloudTransactions = snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id }));
         setTransactions(cloudTransactions);
         setSyncStatus(cloudTransactions.length ? "Synced with Firestore" : "Cloud database empty");
       },
@@ -164,25 +164,25 @@ function App() {
     }
 
     const subscriptionsUnsub = watchUserCollection(user.uid, "subscriptions", (snapshot) => {
-      setSubscriptionItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.renews.localeCompare(b.renews)));
+      setSubscriptionItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.renews.localeCompare(b.renews)));
     }, () => setSyncStatus("Subscription sync failed"));
     const calendarUnsub = watchUserCollection(user.uid, "calendarEvents", (snapshot) => {
-      setCalendarItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.date.localeCompare(b.date)));
+      setCalendarItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.date.localeCompare(b.date)));
     }, () => setSyncStatus("Calendar sync failed"));
     const cardsUnsub = watchUserCollection(user.uid, "creditCards", (snapshot) => {
-      setCardItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.name.localeCompare(b.name)));
+      setCardItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.name.localeCompare(b.name)));
     }, () => setSyncStatus("Card sync failed"));
     const worthUnsub = watchUserCollection(user.uid, "netWorthItems", (snapshot) => {
-      setWorthItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.name.localeCompare(b.name)));
+      setWorthItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.name.localeCompare(b.name)));
     }, () => setSyncStatus("Net worth sync failed"));
     const trendUnsub = watchUserCollection(user.uid, "netWorthTrend", (snapshot) => {
-      setWorthTrend(snapshot.docs.map((item) => item.data()).sort((a, b) => a.order - b.order));
+      setWorthTrend(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.order - b.order));
     }, () => setSyncStatus("Trend sync failed"));
     const budgetUnsub = watchUserCollection(user.uid, "budgets", (snapshot) => {
-      setBudgetItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.category.localeCompare(b.category)));
+      setBudgetItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.category.localeCompare(b.category)));
     }, () => setSyncStatus("Budget sync failed"));
     const goalUnsub = watchUserCollection(user.uid, "goals", (snapshot) => {
-      setGoalItems(snapshot.docs.map((item) => item.data()).sort((a, b) => a.deadline.localeCompare(b.deadline)));
+      setGoalItems(snapshot.docs.map((item) => ({ ...item.data(), _docId: item.id })).sort((a, b) => a.deadline.localeCompare(b.deadline)));
     }, () => setSyncStatus("Goal sync failed"));
 
     return () => {
@@ -338,7 +338,28 @@ function App() {
         )}
 
         <div className="content-grid">
-          {(active === "dashboard" || active === "transactions") && (
+          {active === "dashboard" && (
+            <>
+              <section className="panel wide featured-panel">
+                <PanelTitle title="Spending Mirror" action={<PanelActions label={`${filtered.length} entries`} danger={user && filtered.length > 0 ? "Clear all" : ""} onDanger={clearTransactions} />} />
+                <CategoryBars totals={metrics.categoryTotals} />
+              </section>
+              <section className="panel">
+                <PanelTitle title="Smart Insights" action="Live" />
+                <InsightPanel metrics={metrics} budgets={budgetItems} goals={goalItems} />
+              </section>
+              <section className="panel wide">
+                <PanelTitle title="Recent Activity" action={formatInr(metrics.expense)} />
+                <TransactionsTable items={filtered.slice(0, 6)} onDelete={(id) => deleteItem("transactions", id)} canDelete={Boolean(user)} />
+              </section>
+              <section className="panel">
+                <PanelTitle title="Add Transaction" action={<Plus size={17} />} />
+                <TransactionForm draft={draft} setDraft={setDraft} onAdd={() => addTransaction(draft)} />
+              </section>
+            </>
+          )}
+
+          {active === "transactions" && (
             <>
               <section className="panel wide">
                 <PanelTitle title="Spending Mirror" action={<PanelActions label={`${filtered.length} entries`} danger={user && filtered.length > 0 ? "Clear all" : ""} onDanger={clearTransactions} />} />
@@ -352,7 +373,12 @@ function App() {
                 <PanelTitle title="Recent Activity" action={formatInr(metrics.expense)} />
                 <TransactionsTable items={filtered} onDelete={(id) => deleteItem("transactions", id)} canDelete={Boolean(user)} />
               </section>
-              <section className="panel">
+            </>
+          )}
+
+          {active === "transactions" && (
+            <>
+              <section className="panel wide">
                 <PanelTitle title="Budget Health" action="Limits" />
                 <BudgetPanel budgets={budgetItems} totals={metrics.categoryTotals} onDelete={(id) => deleteItem("budgets", id)} canDelete={Boolean(user)} />
                 <BudgetForm
@@ -362,14 +388,14 @@ function App() {
                   disabled={!user}
                 />
               </section>
-              <section className="panel">
+              <section className="panel wide">
                 <PanelTitle title="Smart Insights" action="Live" />
                 <InsightPanel metrics={metrics} budgets={budgetItems} goals={goalItems} />
               </section>
             </>
           )}
 
-          {(active === "dashboard" || active === "calendar") && (
+          {active === "calendar" && (
             <section className="panel">
               <PanelTitle title="Money Calendar" action="Upcoming" />
               <EventList events={calendarItems} />
@@ -382,14 +408,14 @@ function App() {
             </section>
           )}
 
-          {(active === "dashboard" || active === "parser") && (
+          {active === "parser" && (
             <section className="panel">
               <PanelTitle title="SMS Expense Parser" action="Paste" />
               <SmsParser sms={sms} setSms={setSms} parsed={parsedSms} onImport={() => addTransaction(parsedSms)} />
             </section>
           )}
 
-          {(active === "dashboard" || active === "cards") && (
+          {active === "cards" && (
             <section className="panel wide">
               <PanelTitle title="Credit Card Optimizer" action={bestCard?.name || "No cards"} />
               <CardOptimizer spendCategory={spendCategory} setSpendCategory={setSpendCategory} bestCard={bestCard} cards={cardItems} />
@@ -402,7 +428,7 @@ function App() {
             </section>
           )}
 
-          {(active === "dashboard" || active === "networth") && (
+          {active === "networth" && (
             <section className="panel wide">
               <PanelTitle title="Personal Net Worth" action={formatInr(metrics.netWorth)} />
               <NetWorth items={worthItems} trend={worthTrend} />
@@ -415,7 +441,7 @@ function App() {
             </section>
           )}
 
-          {(active === "dashboard" || active === "calendar") && (
+          {active === "calendar" && (
             <section className="panel">
               <PanelTitle title="Subscriptions" action={formatInr(subscriptionItems.reduce((s, i) => s + i.cost, 0))} />
               <SubscriptionList items={subscriptionItems} />
@@ -427,7 +453,7 @@ function App() {
               />
             </section>
           )}
-          {(active === "dashboard" || active === "networth") && (
+          {active === "networth" && (
             <section className="panel">
               <PanelTitle title="Goals" action={<Target size={17} />} />
               <GoalPanel goals={goalItems} onDelete={(id) => deleteItem("goals", id)} canDelete={Boolean(user)} />
@@ -552,7 +578,7 @@ function TransactionsTable({ items, onDelete, canDelete }) {
           <div><strong>{item.merchant}</strong><span>{formatDate(item.date)} · {item.category} · {item.method}</span></div>
           <div className="row-actions">
             <b className={item.type}>{item.type === "income" ? "+" : "-"}{formatInr(item.amount)}</b>
-            {canDelete && <button className="icon-danger" onClick={() => onDelete(item.id)} title="Delete transaction"><Trash2 size={14} /></button>}
+            {canDelete && <button className="icon-danger" onClick={() => onDelete(item._docId || item.id)} title="Delete transaction"><Trash2 size={14} /></button>}
           </div>
         </div>
       ))}
@@ -580,7 +606,7 @@ function BudgetPanel({ budgets: budgetRows, totals, onDelete, canDelete }) {
             <div className={`track ${over ? "over" : ""}`}><i style={{ width: `${Math.max(4, progress)}%` }} /></div>
             <div className="budget-footer">
               <span>{over ? `${formatInr(spent - budget.limit)} over` : `${formatInr(budget.limit - spent)} left`}</span>
-              {canDelete && <button className="icon-danger" onClick={() => onDelete(budget.id)} title="Delete budget"><Trash2 size={14} /></button>}
+              {canDelete && <button className="icon-danger" onClick={() => onDelete(budget._docId || budget.id)} title="Delete budget"><Trash2 size={14} /></button>}
             </div>
           </div>
         );
@@ -627,7 +653,7 @@ function GoalPanel({ goals: goalRows, onDelete, canDelete }) {
             <div className="track goal"><i style={{ width: `${Math.max(4, progress)}%` }} /></div>
             <div className="budget-footer">
               <span>Due {formatDate(goal.deadline)}</span>
-              {canDelete && <button className="icon-danger" onClick={() => onDelete(goal.id)} title="Delete goal"><Trash2 size={14} /></button>}
+              {canDelete && <button className="icon-danger" onClick={() => onDelete(goal._docId || goal.id)} title="Delete goal"><Trash2 size={14} /></button>}
             </div>
           </div>
         );
