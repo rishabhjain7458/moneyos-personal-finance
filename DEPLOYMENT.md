@@ -68,9 +68,9 @@ Add these repository secrets in GitHub > your repo > Settings > Secrets and vari
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
-- `FIREBASE_SERVICE_ACCOUNT`
+- `FIREBASE_SERVICE_ACCOUNT_MONEYOS_550B3`
 
-Create `FIREBASE_SERVICE_ACCOUNT` with:
+Create `FIREBASE_SERVICE_ACCOUNT_MONEYOS_550B3` with:
 
 ```bash
 firebase init hosting:github
