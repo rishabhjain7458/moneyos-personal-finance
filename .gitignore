@@ -1,0 +1,12 @@
+node_modules/
+dist/
+moneyos-*.png
+.env
+.env.local
+.firebase/
+*.apk
+*.aab
+*.keystore
+local.properties
+.gradle/
+build/
