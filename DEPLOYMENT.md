@@ -38,6 +38,15 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=messagingSenderId
 VITE_FIREBASE_APP_ID=appId
 ```
 
+If Google login shows `auth/api-key-not-valid`, replace the entire local `.env` and all matching GitHub Actions secrets with the exact config from Firebase Console. Do not use the Google OAuth client ID or client secret for `VITE_FIREBASE_API_KEY`; it must be the Firebase Web API key from the Firebase web app config.
+
+You can also ask Firebase CLI for the exact web config:
+
+```bash
+firebase apps:list --project your-project-id
+firebase apps:sdkconfig WEB your-web-app-id --project your-project-id
+```
+
 ## Local run
 
 ```bash
